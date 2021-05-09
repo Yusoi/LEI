@@ -632,65 +632,71 @@ namespace osc {
     denoiserParams.blendFactor  = 1.f/(launchParams.frame.frameID);
     
     // -------------------------------------------------------
-
-
-    OptixImage2D inputAlbedoImage;
-    inputAlbedoImage.data = renderBuffer.d_pointer();
+    OptixImage2D inputLayer;
+    inputLayer.data = renderBuffer.d_pointer();
     /// Width of the image (in pixels)
-    inputAlbedoImage.width = launchParams.frame.size.x;
+    inputLayer.width = launchParams.frame.size.x;
     /// Height of the image (in pixels)
-    inputAlbedoImage.height = launchParams.frame.size.y;
+    inputLayer.height = launchParams.frame.size.y;
     /// Stride between subsequent rows of the image (in bytes).
-    inputAlbedoImage.rowStrideInBytes = launchParams.frame.size.x * sizeof(float4);
+    inputLayer.rowStrideInBytes = launchParams.frame.size.x * sizeof(float4);
     /// Stride between subsequent pixels of the image (in bytes).
     /// For now, only 0 or the value that corresponds to a dense packing of pixels (no gaps) is supported.
-    inputAlbedoImage.pixelStrideInBytes = sizeof(float4);
+    inputLayer.pixelStrideInBytes = sizeof(float4);
     /// Pixel format.
-    inputAlbedoImage.format = OPTIX_PIXEL_FORMAT_FLOAT4;
-
+    inputLayer.format = OPTIX_PIXEL_FORMAT_FLOAT4;
 
     // -------------------------------------------------------
-    OptixImage2D outputAlbedoImage;
-    outputAlbedoImage.data = denoisedBuffer.d_pointer();
+    OptixImage2D outputLayer;
+    outputLayer.data = denoisedBuffer.d_pointer();
     /// Width of the image (in pixels)
-    outputAlbedoImage.width = launchParams.frame.size.x;
+    outputLayer.width = launchParams.frame.size.x;
     /// Height of the image (in pixels)
-    outputAlbedoImage.height = launchParams.frame.size.y;
+    outputLayer.height = launchParams.frame.size.y;
     /// Stride between subsequent rows of the image (in bytes).
-    outputAlbedoImage.rowStrideInBytes = launchParams.frame.size.x * sizeof(float4);
+    outputLayer.rowStrideInBytes = launchParams.frame.size.x * sizeof(float4);
     /// Stride between subsequent pixels of the image (in bytes).
     /// For now, only 0 or the value that corresponds to a dense packing of pixels (no gaps) is supported.
-    outputAlbedoImage.pixelStrideInBytes = sizeof(float4);
+    outputLayer.pixelStrideInBytes = sizeof(float4);
     /// Pixel format.
-    outputAlbedoImage.format = OPTIX_PIXEL_FORMAT_FLOAT4;
-
-    // -------------------------------------------------------
-
-    OptixDenoiserLayer layer;
-    layer.input = inputAlbedoImage;
-    layer.output = outputAlbedoImage;
-
-    // Currently Disabled
-    OptixDenoiserGuideLayer guideLayer;
-
+    outputLayer.format = OPTIX_PIXEL_FORMAT_FLOAT4;
 
     // -------------------------------------------------------
     if (denoiserOn) {
-      OPTIX_CHECK(optixDenoiserInvoke(/*denoiser*/denoiser,
+#if OPTIX_VERSION >= 70300
+      OptixDenoiserGuideLayer denoiserGuideLayer = {};
+
+      OptixDenoiserLayer denoiserLayer = {};
+      denoiserLayer.input = inputLayer;
+      denoiserLayer.output = outputLayer;
+
+      OPTIX_CHECK(optixDenoiserInvoke(denoiser,
                                       /*stream*/0,
                                       &denoiserParams,
                                       denoiserState.d_pointer(),
                                       denoiserState.size(),
-                                      /*Guide Layer*/ &guideLayer,
-                                      /*Layers*/&layer,
-                                      /*num layers*/1,
+                                      &denoiserGuideLayer,
+                                      &denoiserLayer,1,
                                       /*inputOffsetX*/0,
                                       /*inputOffsetY*/0,
                                       denoiserScratch.d_pointer(),
                                       denoiserScratch.size()));
+#else
+      OPTIX_CHECK(optixDenoiserInvoke(denoiser,
+                                      /*stream*/0,
+                                      &denoiserParams,
+                                      denoiserState.d_pointer(),
+                                      denoiserState.size(),
+                                      &inputLayer,1,
+                                      /*inputOffsetX*/0,
+                                      /*inputOffsetY*/0,
+                                      &outputLayer,
+                                      denoiserScratch.d_pointer(),
+                                      denoiserScratch.size()));
+#endif
     } else {
-      cudaMemcpy((void*)layer.input.data,(void*)layer.input.data,
-                 layer.input.width* layer.input.height*sizeof(float4),
+      cudaMemcpy((void*)outputLayer.data,(void*)inputLayer.data,
+                 outputLayer.width*outputLayer.height*sizeof(float4),
                  cudaMemcpyDeviceToDevice);
     }
     
@@ -733,20 +739,19 @@ namespace osc {
     // create the denoiser:
     OptixDenoiserOptions denoiserOptions = {};
 
-    denoiserOptions.guideAlbedo = 0;
-    denoiserOptions.guideNormal = 0;
-
-    //denoiserOptions.guideAlbedo = OPTIX_DENOISER_MODEL_KIND_LDR;
-
-    OptixDenoiserModelKind denoiserModel = OPTIX_DENOISER_MODEL_KIND_LDR;
+#if OPTIX_VERSION >= 70300
+    OPTIX_CHECK(optixDenoiserCreate(optixContext,OPTIX_DENOISER_MODEL_KIND_LDR,&denoiserOptions,&denoiser));
+#else
+    denoiserOptions.inputKind = OPTIX_DENOISER_INPUT_RGB;
 
 #if OPTIX_VERSION < 70100
     // these only exist in 7.0, not 7.1
     denoiserOptions.pixelFormat = OPTIX_PIXEL_FORMAT_FLOAT4;
 #endif
 
-    OPTIX_CHECK(optixDenoiserCreate(optixContext,denoiserModel,&denoiserOptions,&denoiser));
-    //OPTIX_CHECK(optixDenoiserSetModel(denoiser,denoiserModel,&denoiserOptions,NULL,0));
+    OPTIX_CHECK(optixDenoiserCreate(optixContext,&denoiserOptions,&denoiser));
+    OPTIX_CHECK(optixDenoiserSetModel(denoiser,OPTIX_DENOISER_MODEL_KIND_LDR,NULL,0));
+#endif
     
     // .. then compute and allocate memory resources for the denoiser
     OptixDenoiserSizes denoiserReturnSizes;
