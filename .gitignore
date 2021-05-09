@@ -32,3 +32,6 @@
 *.app
 
 Optix/build/*
+build/*
+Optix/common/3rdParty/oidn/*
+Optix/common/3rdParty/tbb/*
