@@ -31,6 +31,8 @@ add_executable(ex12_denoiseSeparateChannels
   SampleRenderer.cpp
   Model.cpp
   main.cpp
+  lodepng.h
+  lodepng.cpp
   )
 
 target_link_libraries(ex12_denoiseSeparateChannels

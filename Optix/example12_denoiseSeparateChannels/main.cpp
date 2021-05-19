@@ -124,6 +124,11 @@ namespace osc {
         std::cout << "num samples/pixel now "
                   << sample.launchParams.numPixelSamples << std::endl;
       }
+      if (key == 'C' || key == 'c') {
+          sample.capture = true;
+          sample.captureStarted = true;
+          std::cout << "capturing image" << std::endl;
+      }
     }
     
 

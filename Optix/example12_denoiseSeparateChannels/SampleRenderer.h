@@ -62,6 +62,8 @@ namespace osc {
     
     bool denoiserOn = true;
     bool accumulate = true;
+    bool capture = false;
+    bool captureStarted = false;
   protected:
 
 
@@ -184,6 +186,8 @@ namespace osc {
     std::vector<cudaArray_t>         textureArrays;
     std::vector<cudaTextureObject_t> textureObjects;
     /*! @} */
+
+    long nr = 0;
   };
 
 } // ::osc

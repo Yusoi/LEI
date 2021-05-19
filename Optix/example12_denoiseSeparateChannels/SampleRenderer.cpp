@@ -18,6 +18,8 @@
 #include "LaunchParams.h"
 // this include may only appear in a single source file:
 #include <optix_function_table_definition.h>
+#include "lodepng.h"
+#include <cstring>
 
 /*! \namespace osc - Optix Siggraph Course */
 namespace osc {
@@ -600,7 +602,15 @@ namespace osc {
     sbt.hitgroupRecordCount         = (int)hitgroupRecords.size();
   }
 
-
+  void abort_(const char* s, ...)
+  {
+      va_list args;
+      va_start(args, s);
+      vfprintf(stderr, s, args);
+      fprintf(stderr, "\n");
+      va_end(args);
+      abort();
+  }
 
   /*! render one frame */
   void SampleRenderer::render()
@@ -609,7 +619,11 @@ namespace osc {
     // already done:
     if (launchParams.frame.size.x == 0) return;
 
-    if (!accumulate)
+    if (captureStarted) {
+        launchParams.frame.frameID = 0;
+        captureStarted = false;
+    }
+    if (!accumulate && !capture)
       launchParams.frame.frameID = 0;
     launchParamsBuffer.upload(&launchParams,1);
     launchParams.frame.frameID++;
@@ -692,8 +706,13 @@ namespace osc {
     /// Pixel format.
     outputLayer.format = OPTIX_PIXEL_FORMAT_FLOAT4;
 
+    if (capture) {
+        cudaMemcpy((void*)outputLayer.data, (void*)inputLayer[0].data,
+            outputLayer.width * outputLayer.height * sizeof(float4),
+            cudaMemcpyDeviceToDevice);
+    }
     // -------------------------------------------------------
-    if (denoiserOn) {
+    else if (denoiserOn) {
       OPTIX_CHECK(optixDenoiserComputeIntensity
                   (denoiser,
                    /*stream*/0,
@@ -742,6 +761,58 @@ namespace osc {
     }
     computeFinalPixelColors();
     
+    if (capture && (launchParams.frame.frameID == 1000 || launchParams.frame.frameID == 1)) {
+        uint32_t* imageBuffer;
+        size_t image_size = launchParams.frame.size.x * launchParams.frame.size.y * sizeof(uint32_t);
+        cudaMallocHost((void**) &imageBuffer, image_size);
+        downloadPixels(imageBuffer);
+        
+        // PNG Encoder
+        //--------------------------------------------------------------
+
+        std::cerr << "Size x: " << launchParams.frame.size.x << " Size y: " << launchParams.frame.size.y << std::endl;
+
+        std::vector<uint8_t> PngBuffer(launchParams.frame.size.x * launchParams.frame.size.y * sizeof(uint8_t) * 4);
+
+        for (std::int32_t I = 0; I < launchParams.frame.size.y; ++I)
+        {
+            for (std::int32_t J = 0; J < launchParams.frame.size.x; ++J)
+            {
+                std::size_t OldPos = (launchParams.frame.size.y - I - 1) * (launchParams.frame.size.x /* 3*/) + /*3 */ J;
+                std::size_t NewPos = I * (launchParams.frame.size.x * 4) + 4 * J;
+                PngBuffer[NewPos + 0] = (uint8_t)(imageBuffer[OldPos] >> 0); //R is offset 0
+                PngBuffer[NewPos + 1] = (uint8_t)(imageBuffer[OldPos] >> 8); //B is offset 1
+                PngBuffer[NewPos + 2] = (uint8_t)(imageBuffer[OldPos] >> 16); //G is offset 2
+                PngBuffer[NewPos + 3] = (uint8_t)(imageBuffer[OldPos] >> 24); //A is offset 3
+            } 
+        }
+
+        std::vector<std::uint8_t>OutputBuffer;
+        lodepng::encode(OutputBuffer, PngBuffer, launchParams.frame.size.x, launchParams.frame.size.y);
+
+
+        std::string filename = "";
+        if (launchParams.frame.frameID == 1) {
+            filename = std::to_string(nr) + "_noisy.png";
+        } else if (launchParams.frame.frameID == 1000) {
+            filename = std::to_string(nr) + "_accumulated.png";
+        }
+
+        lodepng::save_file(OutputBuffer, ("generated_dataset\/"+filename).c_str());
+
+        //--------------------------------------------------------------
+
+        cudaFreeHost(imageBuffer);
+                   
+        if (launchParams.frame.frameID == 1) {
+            std::cout << "Noisy Image Saved" << std::endl;
+        } else if (launchParams.frame.frameID == 1000) {
+            std::cout << "Accumulated Image Saved" << std::endl << "Ended Capture" << std::endl;
+            capture = false;
+            nr++;
+        }
+    }
+
     // sync - make sure the frame is rendered before we download and
     // display (obviously, for a high-performance application you
     // want to use streams and double-buffering, but for this simple
