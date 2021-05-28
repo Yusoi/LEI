@@ -52,7 +52,6 @@ add_subdirectory(${gdt_dir} EXCLUDE_FROM_ALL)
 # ------------------------------------------------------------------
 set(OpenGL_GL_PREFERENCE LEGACY)
 if (WIN32)
-#  set(glfw_dir ${PROJECT_SOURCE_DIR}/submodules/glfw/)
   set(glfw_dir ${PROJECT_SOURCE_DIR}/common/3rdParty/glfw/)
   include_directories(${glfw_dir}/include)
   add_subdirectory(${glfw_dir} EXCLUDE_FROM_ALL)
@@ -63,6 +62,19 @@ include_directories(common)
 add_subdirectory(common/glfWindow EXCLUDE_FROM_ALL)
 
 #include_directories(common/lodepng EXCLUDE_FROM_ALL)
+#---------------------------------------------------
+# INTEL STUFF
+#---------------------------------------------------
+find_library(tbb tbb ${PROJECT_SOURCE_DIR}/common/oidn/lib/tbb.lib)
+find_library(oidn OpenImageDenoise ${PROJECT_SOURCE_DIR}/common/oidn/lib/OpenImageDenoise.lib)
+find_path (OIDN_INCLUDES config.h oidn.h oidn.hpp ${PROJECT_SOURCE_DIR}/common/oidn/include/OpenImageDenoise)
+include_directories(${OIDN_INCLUDES})
+
+#---------------------------------------------------
+# OIIO STUFF
+#---------------------------------------------------
+find_library(oiio oiio ${PROJECT_SOURCE_DIR}/common/OpenImageIO/lib/OpenImageIO.lib)
+include_directories(${PROJECT_SOURCE_DIR}/common/OpenImageIO/include)
 
 # ------------------------------------------------------------------
 # and final build rules for the project
@@ -70,7 +82,11 @@ add_subdirectory(common/glfWindow EXCLUDE_FROM_ALL)
 
 set(optix_LIBRARY "")
 
+# the same rendering example, but in a glfwindow with continuous
+# rendering
 add_subdirectory(example11_denoiseColorOnly)
 add_subdirectory(example12_denoiseSeparateChannels)
+add_subdirectory(intel_denoiser)
+add_subdirectory(intel_image_denoiser)
 
 

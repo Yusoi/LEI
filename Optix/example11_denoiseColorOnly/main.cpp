@@ -143,11 +143,11 @@ namespace osc {
 #ifdef _WIN32
       // on windows, visual studio creates _two_ levels of build dir
       // (x86/Release)
-      "../../models/sponza.obj"
+      "../../Optix/models/sponza.obj"
 #else
       // on linux, common practice is to have ONE level of build dir
       // (say, <project>/build/)...
-      "../models/sponza.obj"
+      "../Optix/models/sponza.obj"
 #endif
                              );
       Camera camera = { /*from*/vec3f(-1293.07f, 154.681f, -0.7304f),
