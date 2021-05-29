@@ -103,6 +103,8 @@ namespace osc {
     /*! constructs the shader binding table */
     void buildSBT();
 
+    bool convertToFormat(void* in_ptr, void* out_ptr, unsigned int in_channels, unsigned int out_channels);
+
     /*! build an acceleration structure for the given triangle mesh */
     OptixTraversableHandle buildAccel();
 
@@ -183,8 +185,8 @@ namespace osc {
     std::vector<cudaTextureObject_t> textureObjects;
     /*! @} */
 
-    oidn::DeviceRef device = oidn::newDevice();
-    oidn::FilterRef filter = device.newFilter("RT");
+    oidn::DeviceRef device;
+    oidn::FilterRef filter;
 
     long nr = 0;
   };

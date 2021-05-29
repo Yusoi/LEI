@@ -231,15 +231,11 @@ int main()
         if (device.getError(errorMessage) != oidn::Error::None)
             throw std::runtime_error(errorMessage);
         device.setErrorFunction(errorCallback);
-        // Set our device parameters
-
         // Commit the changes to the device
         device.commit();
 
         // Create the AI filter
         oidn::FilterRef filter = device.newFilter("RT");
-
-        // Set our filter paramaters
 
         // Set our the filter images
         filter.setImage("color", (void*)&colour_pixels_float3[0], oidn::Format::Float3, c_width, c_height);

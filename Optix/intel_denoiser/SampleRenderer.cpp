@@ -51,12 +51,13 @@ namespace osc {
     TriangleMeshSBTData data;
   };
 
-
   /*! constructor - performs all setup, including initializing
     optix, creates module, pipeline, programs, SBT, etc. */
   SampleRenderer::SampleRenderer(const Model *model, const QuadLight &light)
     : model(model)
   {
+    device = oidn::newDevice();
+    filter = device.newFilter("RT");
     initOptix();
 
     launchParams.light.origin = light.origin;
@@ -94,6 +95,59 @@ namespace osc {
     std::cout << GDT_TERMINAL_GREEN;
     std::cout << "#osc: Optix 7 Sample fully set up" << std::endl;
     std::cout << GDT_TERMINAL_DEFAULT;
+  }
+
+  bool SampleRenderer::convertToFormat(void* in_ptr, void* out_ptr, unsigned int in_channels, unsigned int out_channels)
+  {
+      switch (in_channels)
+      {
+      case(1):
+      {
+          switch (out_channels)
+          {
+          case(1):
+          case(2):
+          case(3):
+          case(4): memcpy(out_ptr, in_ptr, sizeof(float)); return true;
+          default: return false; // How has this happened?
+          }
+      }
+      case(2):
+      {
+          switch (out_channels)
+          {
+          case(1): memcpy(out_ptr, in_ptr, sizeof(float)); return true;
+          case(2):
+          case(3):
+          case(4): memcpy(out_ptr, in_ptr, 2 * sizeof(float)); return true;
+          default: return false; // How has this happened?
+          }
+      }
+      case(3):
+      {
+          switch (out_channels)
+          {
+          case(1): memcpy(out_ptr, in_ptr, 1 * sizeof(float)); return true;
+          case(2): memcpy(out_ptr, in_ptr, 2 * sizeof(float)); return true;
+          case(3):
+          case(4): memcpy(out_ptr, in_ptr, 3 * sizeof(float)); return true;
+          default: return false; // How has this happened?
+          }
+      }
+      case(4):
+      {
+          switch (out_channels)
+          {
+          case(1): memcpy(out_ptr, in_ptr, 1 * sizeof(float)); return true;
+          case(2): memcpy(out_ptr, in_ptr, 2 * sizeof(float)); return true;
+          case(3): memcpy(out_ptr, in_ptr, 3 * sizeof(float)); return true;
+          case(4): memcpy(out_ptr, in_ptr, 4 * sizeof(float)); return true;
+          default: return false; // How has this happened?
+          }
+      }
+      default: return false; // How has this happened?
+      }
+      return false; // some unsupported conversion
   }
 
   void SampleRenderer::createTextures()
@@ -706,6 +760,51 @@ namespace osc {
     }
     // -------------------------------------------------------
     else if (denoiserOn) {
+        /*// Create our output buffer
+        std::vector<float> output_pixels(outputLayer.width * outputLayer.height * 4);
+
+        // Get our pixel data
+        std::vector<float> colour_pixels(inputLayer[0].width * inputLayer[0].height * 4);
+        fbColor.download(&colour_pixels[0], colour_pixels.size());
+
+        std::vector<float> albedo_pixels(inputLayer[1].width * inputLayer[1].height * 4);
+        fbAlbedo.download(&albedo_pixels[0], albedo_pixels.size());
+
+        std::vector<float> normal_pixels(inputLayer[2].width * inputLayer[2].height * 4);
+        fbNormal.download(&normal_pixels[0], normal_pixels.size());
+
+        // Catch exceptions
+        try
+        {
+            // Create our device
+            oidn::DeviceRef device = oidn::newDevice();
+
+            // Commit the changes to the device
+            device.commit();
+
+            // Create the AI filter
+            oidn::FilterRef filter = device.newFilter("RT");
+
+            // Set our the filter images
+            filter.setImage("color", (void*)&colour_pixels[0], oidn::Format::Float4, inputLayer[0].width, inputLayer[0].height);
+            filter.setImage("albedo", (void*)&albedo_pixels[0], oidn::Format::Float4, inputLayer[1].width, inputLayer[1].height);
+            filter.setImage("normal", (void*)&normal_pixels[0], oidn::Format::Float4, inputLayer[2].width, inputLayer[2].height);
+            filter.setImage("output", (void*)&output_pixels[0], oidn::Format::Float4, outputLayer.width, outputLayer.height);
+
+            // Commit changes to the filter
+            filter.commit();
+
+            // Execute denoise
+            filter.execute();
+        }
+        catch (const std::exception& e)
+        {
+            std::cerr << "[OIDN]: %s", e.what();
+        }
+
+        denoisedBuffer.upload(&output_pixels[0], output_pixels.size());
+        */
+
         filter.setImage("color", (void*)inputLayer[0].data, oidn::Format::Float4, inputLayer[0].width, inputLayer[0].height, 0, inputLayer[0].pixelStrideInBytes, inputLayer[0].rowStrideInBytes);
         filter.setImage("albedo", (void*)inputLayer[1].data, oidn::Format::Float4, inputLayer[1].width, inputLayer[1].height, 0, inputLayer[1].pixelStrideInBytes, inputLayer[1].rowStrideInBytes);
         filter.setImage("normal", (void*)inputLayer[2].data, oidn::Format::Float4, inputLayer[2].width, inputLayer[2].height, 0, inputLayer[2].pixelStrideInBytes, inputLayer[2].rowStrideInBytes);
