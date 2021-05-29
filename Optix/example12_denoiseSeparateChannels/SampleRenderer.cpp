@@ -761,10 +761,10 @@ namespace osc {
     }
     computeFinalPixelColors();
     
-    if (capture && (launchParams.frame.frameID == 1000 || launchParams.frame.frameID == 1)) {
+    if (capture && (launchParams.frame.frameID == 2000 || launchParams.frame.frameID == 1)) {
         uint32_t* imageBuffer;
-        size_t image_size = launchParams.frame.size.x * launchParams.frame.size.y * sizeof(uint32_t);
-        cudaMallocHost((void**) &imageBuffer, image_size);
+        size_t image_size = launchParams.frame.size.x * launchParams.frame.size.y;
+        cudaMallocHost((void**) &imageBuffer, image_size * sizeof(uint32_t));
         downloadPixels(imageBuffer);
         
         // PNG Encoder
@@ -789,24 +789,83 @@ namespace osc {
 
         std::vector<std::uint8_t>OutputBuffer;
         lodepng::encode(OutputBuffer, PngBuffer, launchParams.frame.size.x, launchParams.frame.size.y);
-
+        cudaFreeHost(imageBuffer);
 
         std::string filename = "";
         if (launchParams.frame.frameID == 1) {
             filename = std::to_string(nr) + "_noisy.png";
-        } else if (launchParams.frame.frameID == 1000) {
+        } else if (launchParams.frame.frameID == 2000) {
             filename = std::to_string(nr) + "_accumulated.png";
         }
 
         lodepng::save_file(OutputBuffer, ("generated_dataset\/"+filename).c_str());
 
+        if (launchParams.frame.frameID == 1) {
+            float4* inputImageBuffer;
+            cudaMallocHost((void**)&inputImageBuffer, image_size * sizeof(float4));
+
+            for (int i = 0; i < 3; i++) {
+                switch (i) {
+                    case 0:
+                        fbColor.download(inputImageBuffer, image_size);
+                        break;
+                    case 1:
+                        fbAlbedo.download(inputImageBuffer, image_size);
+                        break;
+                    case 2:
+                        fbNormal.download(inputImageBuffer, image_size);
+                        break;
+                    default:
+                        std::cout << "I does not exist 1" << std::endl;
+                }
+
+                std::vector<uint8_t> PngBuffer(launchParams.frame.size.x* launchParams.frame.size.y * sizeof(uint8_t) * 4);
+
+                for (std::int32_t I = 0; I < launchParams.frame.size.y; ++I)
+                {
+                    for (std::int32_t J = 0; J < launchParams.frame.size.x; ++J)
+                    {
+                        std::size_t OldPos = (launchParams.frame.size.y - I - 1) * (launchParams.frame.size.x /* 3*/) + /*3 */ J;
+                        std::size_t NewPos = I * (launchParams.frame.size.x * 4) + 4 * J;
+                        PngBuffer[NewPos + 0] = (uint8_t)inputImageBuffer[OldPos].x * 255.9f; //R is offset 0
+                        PngBuffer[NewPos + 1] = (uint8_t)inputImageBuffer[OldPos].y * 255.9f; //B is offset 1
+                        PngBuffer[NewPos + 2] = (uint8_t)inputImageBuffer[OldPos].z * 255.9f; //G is offset 2
+                        PngBuffer[NewPos + 3] = (uint8_t)inputImageBuffer[OldPos].w * 255.9f; //A is offset 3
+                    }
+                }
+
+                std::vector<std::uint8_t>OutputBuffer;
+                lodepng::encode(OutputBuffer, PngBuffer, launchParams.frame.size.x, launchParams.frame.size.y);
+
+                std::string filename = "";
+                switch (i) {
+                    case 0:
+                        filename = std::to_string(nr) + "_color.png";
+                        break;
+                    case 1:
+                        filename = std::to_string(nr) + "_albedo.png";
+                        break;
+                    case 2:
+                        filename = std::to_string(nr) + "_normal.png";
+                        break;
+                    default:
+                        std::cout << "I does not exist 2" << std::endl;
+                }
+
+                lodepng::save_file(OutputBuffer, ("generated_dataset\/" + filename).c_str());
+                
+            }
+            
+            cudaFreeHost(inputImageBuffer);
+        }
+
         //--------------------------------------------------------------
 
-        cudaFreeHost(imageBuffer);
+        
                    
         if (launchParams.frame.frameID == 1) {
             std::cout << "Noisy Image Saved" << std::endl;
-        } else if (launchParams.frame.frameID == 1000) {
+        } else if (launchParams.frame.frameID == 2000) {
             std::cout << "Accumulated Image Saved" << std::endl << "Ended Capture" << std::endl;
             capture = false;
             nr++;

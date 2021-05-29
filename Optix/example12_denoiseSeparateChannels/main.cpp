@@ -20,6 +20,11 @@
 #include "glfWindow/GLFWindow.h"
 #include <GL/gl.h>
 
+#include <math.h>
+#include <cstdlib>
+
+bool capture = false;
+
 /*! \namespace osc - Optix Siggraph Course */
 namespace osc {
 
@@ -38,13 +43,38 @@ namespace osc {
     
     virtual void render() override
     {
-      if (cameraFrame.modified) {
+      if (capture && !sample.capture) {
+        float from_x = rand() % (1250 - (-1250) + 1) - 1250;
+        float from_y = rand() % (800 - 30 + 1) + 30;
+        float from_z = rand() % (575 - (-575) + 1) - 575;
+        gdt::vec3f from = gdt::vec3f(from_x, from_y, from_z);
+
+        float radius = 1;
+        float angle = ((float)(rand() % 100000) / (float)100000) * 2 * M_PI;
+        float at_y = ((float)(rand() % 200000) / (float)100000) - 1;
+        
+
+        gdt::vec3f at = gdt::vec3f(cos(angle) + from_x, at_y + from_y, sin(angle) + from_z);
+        sample.setCamera(Camera{ from,
+                                 at,
+                                 cameraFrame.get_up() });
+        std::cout << "From\| X:" << from.x << " Y:" << from.y << " Z:" << from.z << std::endl;
+        std::cout << "At\| X:" << at.x << " Y:" << at.y << " Z:" << at.z << std::endl;
+
+        sample.capture = true;
+        sample.captureStarted = true;
+        sample.denoiserOn = false;
+
+      } else if (cameraFrame.modified) {
         sample.setCamera(Camera{ cameraFrame.get_from(),
                                  cameraFrame.get_at(),
                                  cameraFrame.get_up() });
         cameraFrame.modified = false;
       }
       sample.render();
+      if (sample.nr > 999) {
+          capture = false;
+      }
     }
     
     virtual void draw() override
@@ -124,9 +154,8 @@ namespace osc {
         std::cout << "num samples/pixel now "
                   << sample.launchParams.numPixelSamples << std::endl;
       }
-      if (key == 'C' || key == 'c') {
-          sample.capture = true;
-          sample.captureStarted = true;
+      if (key == 'P' || key == 'p') {
+          capture = true;
           std::cout << "capturing image" << std::endl;
       }
     }
@@ -143,6 +172,7 @@ namespace osc {
     world, then exit */
   extern "C" int main(int ac, char **av)
   {
+    srand(time(0));
     try {
       Model *model = loadOBJ(
 #ifdef _WIN32
