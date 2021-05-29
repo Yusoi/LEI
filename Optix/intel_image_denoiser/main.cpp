@@ -1,20 +1,102 @@
 
 #include <oidn.hpp>
-#include <oidn.h>
-#include <exception>
 #include <iostream>
-#include <stdio.h>
 #include <OpenImageIO\imageio.h>
 #include <OpenImageIO\imagebuf.h>
+#include <stdio.h>
+#include <exception>
+#include <time.h>
+#ifdef _WIN32
+#include <thread>
+#include <chrono>
+#include <windows.h>
+#include <winternl.h>
+#endif
+
+#define DENOISER_MAJOR_VERSION 1
+#define DENOISER_MINOR_VERSION 5
 
 // Our global image handles
-OIIO::ImageBuf* input_colour = nullptr;
+OIIO::ImageBuf* input_beauty = nullptr;
 OIIO::ImageBuf* input_albedo = nullptr;
 OIIO::ImageBuf* input_normal = nullptr;
 
+// Logging verbosity level
+int verbosity = 2;
+
+// Application start time
+std::chrono::high_resolution_clock::time_point app_start_time;
+
+std::string getTime()
+{
+    std::chrono::duration<double, std::milli> time_span = std::chrono::high_resolution_clock::now() - app_start_time;
+    double milliseconds = time_span.count();
+    int seconds = floor(milliseconds / 1000.0);
+    int minutes = floor((float(seconds) / 60.f));
+    milliseconds -= seconds * 1000.0;
+    seconds -= minutes * 60;
+    char s[9];
+    sprintf(s, "%02d:%02d:%03d", minutes, seconds, (int)milliseconds);
+    return std::string(s);
+}
+
+template<typename... Args>
+void PrintInfo(char* c, Args... args)
+{
+    if (!verbosity)
+        return;
+    char buffer[256];
+    sprintf(buffer, c, args...);
+    std::cout << getTime() << "       | " << buffer << std::endl;
+}
+
+template<typename... Args>
+void PrintError(char* c, Args... args)
+{
+    char buffer[256];
+    sprintf(buffer, c, args...);
+    std::cerr << getTime() << " ERROR | " << buffer << std::endl;
+}
+
+#ifdef _WIN32
+int getSysOpType()
+{
+    int ret = 0;
+    NTSTATUS(WINAPI * RtlGetVersion)(LPOSVERSIONINFOEXW);
+    OSVERSIONINFOEXW osInfo;
+
+    *(FARPROC*)&RtlGetVersion = GetProcAddress(GetModuleHandleA("ntdll"), "RtlGetVersion");
+
+    if (NULL != RtlGetVersion)
+    {
+        osInfo.dwOSVersionInfoSize = sizeof(osInfo);
+        RtlGetVersion(&osInfo);
+        ret = osInfo.dwMajorVersion;
+    }
+    return ret;
+}
+#endif
+
+void exitfunc(int exit_code)
+{
+#ifdef _WIN32
+    if (getSysOpType() < 10)
+    {
+        HANDLE tmpHandle = OpenProcess(PROCESS_ALL_ACCESS, TRUE, GetCurrentProcessId());
+        if (tmpHandle != NULL)
+        {
+            PrintInfo("terminating...");
+            std::this_thread::sleep_for(std::chrono::seconds(1)); // delay 1s
+            TerminateProcess(tmpHandle, 0);
+        }
+    }
+#endif
+    exit(exit_code);
+}
+
 void cleanup()
 {
-    if (input_colour) delete input_colour;
+    if (input_beauty) delete input_beauty;
     if (input_albedo) delete input_albedo;
     if (input_normal) delete input_normal;
 }
@@ -77,34 +159,201 @@ void errorCallback(void* userPtr, oidn::Error error, const char* message)
     throw std::runtime_error(message);
 }
 
-int main()
+bool progressCallback(void* userPtr, double n)
 {
-    bool c_loaded = false, n_loaded = false, a_loaded = false;
+    if (verbosity >= 2)
+        PrintInfo("%d%% complete", (int)(n * 100.0));
+    return true;
+}
+
+void printParams()
+{
+    // Always print parameters if needed
+    int old_verbosity = verbosity;
+    verbosity = 1;
+    PrintInfo("Command line parameters");
+    PrintInfo("-v [int]        : log verbosity level 0:disabled 1:simple 2:full (default 2)");
+    PrintInfo("-i [string]     : path to input image");
+    PrintInfo("-o [string]     : path to output image");
+    PrintInfo("-a [string]     : path to input albedo AOV (optional)");
+    PrintInfo("-n [string]     : path to input normal AOV (optional, requires albedo AOV)");
+    PrintInfo("-hdr [int]      : Image is a HDR image. Disabling with will assume the image is in sRGB (default 1 i.e. enabled)");
+    PrintInfo("-t [int]        : number of threads to use (defualt is all)");
+    PrintInfo("-affinity [int] : Enable affinity. This pins virtual threads to physical cores and can improve performance (default 0 i.e. disabled)");
+    PrintInfo("-repeat [int]   : Execute the denoiser N times. Useful for profiling.");
+    PrintInfo("-maxmem [int]   : Maximum memory size used by the denoiser in MB");
+    verbosity = old_verbosity;
+}
+
+int main(int argc, char* argv[])
+{
+    if (argc > 1)
+    {
+        for (int i = 1; i < argc; i++)
+        {
+            if (strcmp(argv[i], "-v"))
+                continue;
+            i++;
+            if (i >= argc)
+            {
+                PrintError("incorrect number of arguments for flag -v");
+            }
+            verbosity = std::stoi(std::string(argv[i]));
+            break;
+        }
+    }
+    app_start_time = std::chrono::high_resolution_clock::now();
+    PrintInfo("Launching OIDN AI Denoiser command line app v%d.%d", DENOISER_MAJOR_VERSION, DENOISER_MINOR_VERSION);
+    PrintInfo("Created by Declan Russell (01/03/2019)");
+
+    bool b_loaded, n_loaded, a_loaded;
+    b_loaded = n_loaded = a_loaded = false;
+
+    // Pass our command line args
     std::string out_path;
-    std::string in_path;
-
-    input_colour = new OIIO::ImageBuf(in_path);
-    if (input_colour->init_spec(in_path, 0, 0))
-        c_loaded = true;
-    else{
-        cleanup();
-        return -1;
+    bool affinity = false;
+    bool hdr = true;
+    unsigned int num_runs = 1;
+    int num_threads = 0;
+    int maxmem = -1;
+    if (argc == 1)
+    {
+        printParams();
+        exitfunc(EXIT_SUCCESS);
+    }
+    for (int i = 1; i < argc; i++)
+    {
+        const std::string arg(argv[i]);
+        if (arg == "-i")
+        {
+            i++;
+            std::string path(argv[i]);
+            if (verbosity >= 2)
+                PrintInfo("Input image: %s", path.c_str());
+            input_beauty = new OIIO::ImageBuf(path);
+            if (input_beauty->init_spec(path, 0, 0))
+            {
+                if (verbosity >= 2)
+                    PrintInfo("Loaded successfully");
+                b_loaded = true;
+            }
+            else
+            {
+                PrintError("Failed to load input image");
+                PrintError("[OIIO]: %s", input_beauty->geterror().c_str());
+                cleanup();
+                exitfunc(EXIT_FAILURE);
+            }
+        }
+        else if (arg == "-n")
+        {
+            i++;
+            std::string path(argv[i]);
+            if (verbosity >= 2)
+                PrintInfo("Normal image: %s", path.c_str());
+            input_normal = new OIIO::ImageBuf(path);
+            if (input_normal->init_spec(path, 0, 0))
+            {
+                if (verbosity >= 2)
+                    PrintInfo("Loaded successfully");
+                n_loaded = true;
+            }
+            else
+            {
+                PrintError("Failed to load normal image");
+                PrintError("[OIIO]: %s", input_normal->geterror().c_str());
+                cleanup();
+                exitfunc(EXIT_FAILURE);
+            }
+        }
+        else if (arg == "-a")
+        {
+            i++;
+            std::string path(argv[i]);
+            if (verbosity >= 2)
+                PrintInfo("Albedo image: %s", path.c_str());
+            input_albedo = new OIIO::ImageBuf(path);
+            if (input_albedo->init_spec(path, 0, 0))
+            {
+                if (verbosity >= 2)
+                    PrintInfo("Loaded successfully");
+                a_loaded = true;
+            }
+            else
+            {
+                PrintError("Failed to load albedo image");
+                PrintError("[OIIO]: %s", input_albedo->geterror().c_str());
+                cleanup();
+                exitfunc(EXIT_FAILURE);
+            }
+        }
+        else if (arg == "-o")
+        {
+            i++;
+            out_path = std::string(argv[i]);
+            if (verbosity >= 2)
+                PrintInfo("Output image: %s", out_path.c_str());
+        }
+        else if (arg == "-affinity")
+        {
+            i++;
+            std::string affinity_string(argv[i]);
+            affinity = std::stoi(affinity_string);
+            if (verbosity >= 2)
+                PrintInfo((affinity) ? "Affinity enabled" : "Affinity disabled");
+        }
+        else if (arg == "-hdr")
+        {
+            i++;
+            std::string hdr_string(argv[i]);
+            hdr = bool(std::stoi(hdr_string));
+            if (verbosity >= 2)
+                PrintInfo((hdr) ? "HDR training data enabled" : "HDR training data disabled");
+        }
+        else if (arg == "-t")
+        {
+            i++;
+            std::string num_threads_string(argv[i]);
+            num_threads = std::stoi(num_threads_string);
+            if (verbosity >= 2)
+                PrintInfo("Number of threads set to %d", num_threads);
+        }
+        else if (arg == "-repeat")
+        {
+            i++;
+            std::string repeat_string(argv[i]);
+            num_runs = std::max(std::stoi(repeat_string), 1);
+            if (verbosity >= 2)
+                PrintInfo("Number of repeats set to %d", num_runs);
+        }
+        else if (arg == "-maxmem")
+        {
+            i++;
+            std::string maxmem_string(argv[i]);
+            maxmem = float(std::stoi(maxmem_string));
+            if (verbosity >= 2)
+                PrintInfo("Maximum denoiser memory set to %dMB", maxmem);
+        }
+        else if (arg == "-h" || arg == "--help")
+        {
+            printParams();
+        }
     }
 
-    input_normal = new OIIO::ImageBuf(in_path);
-    if (input_normal->init_spec(in_path, 0, 0))
-        c_loaded = true;
-    else {
+    // Check if a beauty has been loaded
+    if (!b_loaded)
+    {
+        PrintError("No input image could be loaded");
         cleanup();
-        return -1;
+        exitfunc(EXIT_FAILURE);
     }
 
-    input_albedo = new OIIO::ImageBuf(in_path);
-    if (input_albedo->init_spec(in_path, 0, 0))
-        c_loaded = true;
-    else {
+    // If a normal AOV is loaded then we also require an albedo AOV
+    if (n_loaded && !a_loaded)
+    {
+        PrintError("You cannot use a normal AOV without an albedo");
         cleanup();
-        return -1;
+        exitfunc(EXIT_FAILURE);
     }
 
     // Check for a file extension
@@ -114,15 +363,15 @@ int main()
     std::string ext(ext_c);
     if (!ext.size())
     {
-        std::cerr << "No output file extension";
+        PrintError("No output file extension");
         cleanup();
-        return -1;
+        exitfunc(EXIT_FAILURE);
     }
 
-    OIIO::ROI colour_roi, albedo_roi, normal_roi;
-    colour_roi = OIIO::get_roi_full(input_colour->spec());
-    int c_width = colour_roi.width();
-    int c_height = colour_roi.height();
+    OIIO::ROI beauty_roi, albedo_roi, normal_roi;
+    beauty_roi = OIIO::get_roi_full(input_beauty->spec());
+    int b_width = beauty_roi.width();
+    int b_height = beauty_roi.height();
     if (a_loaded)
     {
         albedo_roi = OIIO::get_roi_full(input_albedo->spec());
@@ -130,16 +379,16 @@ int main()
             normal_roi = OIIO::get_roi_full(input_normal->spec());
     }
 
-    // Check that our feature buffers are the same resolution as our colour
+    // Check that our feature buffers are the same resolution as our beauty
     int a_width = (a_loaded) ? albedo_roi.width() : 0;
     int a_height = (a_loaded) ? albedo_roi.height() : 0;
     if (a_loaded)
     {
-        if (a_width != c_width || a_height != c_height)
+        if (a_width != b_width || a_height != b_height)
         {
-            std::cerr << "Aldedo image not same resolution as colour";
+            PrintError("Aldedo image not same resolution as beauty");
             cleanup();
-            return -1;
+            exitfunc(EXIT_FAILURE);
         }
     }
 
@@ -147,33 +396,33 @@ int main()
     int n_height = (n_loaded) ? normal_roi.height() : 0;
     if (n_loaded)
     {
-        if (n_width != c_width || n_height != c_height)
+        if (n_width != b_width || n_height != b_height)
         {
-            std::cerr << "Normal image not same resolution as colour";
+            PrintError("Normal image not same resolution as beauty");
             cleanup();
-            return -1;
+            exitfunc(EXIT_FAILURE);
         }
     }
 
     // Create our output buffer
-    std::vector<float> output_pixels(c_width * c_height * 3);
+    std::vector<float> output_pixels(b_width * b_height * 3);
 
     // Get our pixel data
-    std::vector<float> colour_pixels(c_width * c_height * colour_roi.nchannels());
-    input_colour->get_pixels(colour_roi, OIIO::TypeDesc::FLOAT, &colour_pixels[0]);
-    std::vector<float> colour_pixels_float3(c_width * c_height * 3);
+    std::vector<float> beauty_pixels(b_width * b_height * beauty_roi.nchannels());
+    input_beauty->get_pixels(beauty_roi, OIIO::TypeDesc::FLOAT, &beauty_pixels[0]);
+    std::vector<float> beauty_pixels_float3(b_width * b_height * 3);
     // Convert buffer to float3
-    float* in = (float*)colour_pixels.data();
-    float* out = (float*)colour_pixels_float3.data();
-    for (unsigned int i = 0; i < colour_pixels.size(); i += colour_roi.nchannels())
+    float* in = (float*)beauty_pixels.data();
+    float* out = (float*)beauty_pixels_float3.data();
+    for (unsigned int i = 0; i < beauty_pixels.size(); i += beauty_roi.nchannels())
     {
-        if (!convertToFormat(in, out, colour_roi.nchannels(), 3))
+        if (!convertToFormat(in, out, beauty_roi.nchannels(), 3))
         {
-            std::cerr << "Failed to convert colour to float3";
+            PrintError("Failed to convert beauty to float3");
             cleanup();
-            return -1;
+            exitfunc(EXIT_FAILURE);
         }
-        in += colour_roi.nchannels();
+        in += beauty_roi.nchannels();
         out += 3;
     }
 
@@ -191,9 +440,9 @@ int main()
         {
             if (!convertToFormat(in, out, albedo_roi.nchannels(), 3))
             {
-                std::cerr << "Failed to convert albedo to float3";
+                PrintError("Failed to convert albedo to float3");
                 cleanup();
-                return -1;
+                exitfunc(EXIT_FAILURE);
             }
             in += albedo_roi.nchannels();
             out += 3;
@@ -213,9 +462,9 @@ int main()
         {
             if (!convertToFormat(in, out, normal_roi.nchannels(), 3))
             {
-                std::cerr << "Failed to convert normal to float3";
+                PrintError("Failed to convert normal to float3");
                 cleanup();
-                return -1;
+                exitfunc(EXIT_FAILURE);
             }
             in += normal_roi.nchannels();
             out += 3;
@@ -225,37 +474,77 @@ int main()
     // Catch exceptions
     try
     {
+        PrintInfo("Initializing OIDN");
         // Create our device
         oidn::DeviceRef device = oidn::newDevice();
         const char* errorMessage;
         if (device.getError(errorMessage) != oidn::Error::None)
             throw std::runtime_error(errorMessage);
         device.setErrorFunction(errorCallback);
+        // Set our device parameters
+        if (num_threads)
+            device.set("numThreads", num_threads);
+        if (affinity)
+            device.set("setAffinity", affinity);
+
         // Commit the changes to the device
         device.commit();
+        const int versionMajor = device.get<int>("versionMajor");
+        const int versionMinor = device.get<int>("versionMinor");
+        const int versionPatch = device.get<int>("versionPatch");
+
+        PrintInfo("Using OIDN version %d.%d.%d", versionMajor, versionMinor, versionPatch);
 
         // Create the AI filter
         oidn::FilterRef filter = device.newFilter("RT");
 
+        // Set our progress callback
+        filter.setProgressMonitorFunction((oidn::ProgressMonitorFunction)progressCallback);
+
+        // Set our filter paramaters
+
         // Set our the filter images
-        filter.setImage("color", (void*)&colour_pixels_float3[0], oidn::Format::Float3, c_width, c_height);
+        filter.setImage("color", (void*)&beauty_pixels_float3[0], oidn::Format::Float3, b_width, b_height);
         if (a_loaded)
             filter.setImage("albedo", (void*)&albedo_pixels[0], oidn::Format::Float3, a_width, a_height);
         if (n_loaded)
             filter.setImage("normal", (void*)&normal_pixels[0], oidn::Format::Float3, n_width, n_height);
-        filter.setImage("output", (void*)&output_pixels[0], oidn::Format::Float3, c_width, c_height);
+        filter.setImage("output", (void*)&output_pixels[0], oidn::Format::Float3, b_width, b_height);
+
+        filter.set("hdr", hdr);
+        if (maxmem >= 0)
+            filter.set("maxMemoryMB", maxmem);
 
         // Commit changes to the filter
         filter.commit();
 
         // Execute denoise
-        filter.execute();
+        int sum = 0;
+        for (unsigned int i = 0; i < num_runs; i++)
+        {
+            PrintInfo("Denoising...");
+            clock_t start = clock(), diff;
+            filter.execute();
+            diff = clock() - start;
+            int msec = diff * 1000 / CLOCKS_PER_SEC;
+            if (num_runs > 1)
+                PrintInfo("Denoising run %d complete in %d.%03d seconds", i + 1, msec / 1000, msec % 1000);
+            else
+                PrintInfo("Denoising complete in %d.%03d seconds", msec / 1000, msec % 1000);
+            sum += msec;
+        }
+        if (num_runs > 1)
+        {
+            sum /= num_runs;
+            PrintInfo("Denoising avg of %d complete in %d.%03d seconds", num_runs, sum / 1000, sum % 1000);
+        }
+
     }
     catch (const std::exception& e)
     {
-        std::cerr << "[OIDN]: %s", e.what();
+        PrintError("[OIDN]: %s", e.what());
         cleanup();
-        return -1;
+        exitfunc(EXIT_FAILURE);
     }
 
 
@@ -264,33 +553,34 @@ int main()
 
     // Convert the image back to the original format
     in = (float*)output_pixels.data();
-    out = (float*)colour_pixels.data();
+    out = (float*)beauty_pixels.data();
     // Convert buffer to float3
     for (unsigned int i = 0; i < output_pixels.size(); i += 3)
     {
-        if (!convertToFormat(in, out, 3, colour_roi.nchannels()))
+        if (!convertToFormat(in, out, 3, beauty_roi.nchannels()))
         {
-            std::cerr << "Failed to convert output to original format";
+            PrintError("Failed to convert output to original format");
             cleanup();
-            return -1;
+            exitfunc(EXIT_FAILURE);
         }
         in += 3;
-        out += colour_roi.nchannels();
+        out += beauty_roi.nchannels();
     }
 
     // Set our OIIO pixels
-    if (!input_colour->set_pixels(colour_roi, OIIO::TypeDesc::FLOAT, &colour_pixels[0]))
-        std::cerr <<  "Something went wrong setting pixels";
+    if (!input_beauty->set_pixels(beauty_roi, OIIO::TypeDesc::FLOAT, &beauty_pixels[0]))
+        PrintError("Something went wrong setting pixels");
 
     // Save the output image
-    if (input_colour->write(out_path))
-        std::cout << "Done!";
+    PrintInfo("Saving to: %s", out_path.c_str());
+    if (input_beauty->write(out_path))
+        PrintInfo("Done!");
     else
     {
-        std::cerr << "Could not save file %s", out_path.c_str();
-        std::cerr << "[OIIO]: %s", input_colour->geterror().c_str();
+        PrintError("Could not save file %s", out_path.c_str());
+        PrintError("[OIIO]: %s", input_beauty->geterror().c_str());
     }
 
     cleanup();
-    return 0;
+    exitfunc(EXIT_SUCCESS);
 }
