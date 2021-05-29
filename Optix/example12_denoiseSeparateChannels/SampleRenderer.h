@@ -59,11 +59,12 @@ namespace osc {
     /*! set camera to render with */
     void setCamera(const Camera &camera);
 
-    
     bool denoiserOn = true;
     bool accumulate = true;
     bool capture = false;
     bool captureStarted = false;
+    bool cam_pos = false;
+    long nr = 0;
   protected:
 
 
@@ -186,8 +187,6 @@ namespace osc {
     std::vector<cudaArray_t>         textureArrays;
     std::vector<cudaTextureObject_t> textureObjects;
     /*! @} */
-
-    long nr = 0;
   };
 
 } // ::osc
