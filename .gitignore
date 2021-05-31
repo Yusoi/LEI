@@ -35,3 +35,10 @@ Optix/build/*
 build/*
 Optix/common/3rdParty/oidn/*
 Optix/common/3rdParty/tbb/*
+
+Pix2Pix/generated_dataset/*
+Pix2Pix/results/*
+Pix2Pix/test_output/*
+Pix2Pix/training_checkpoints/*
+Pix2Pix/logs/*
+Pix2Pix/fit/*
