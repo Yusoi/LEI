@@ -20,6 +20,7 @@
 #include <optix_function_table_definition.h>
 #include "lodepng.h"
 #include <cstring>
+#include <fstream>
 
 /*! \namespace osc - Optix Siggraph Course */
 namespace osc {
@@ -800,6 +801,7 @@ namespace osc {
 
         lodepng::save_file(OutputBuffer, ("generated_dataset\/"+filename).c_str());
 
+        /*
         if (launchParams.frame.frameID == 1) {
             float4* inputImageBuffer;
             cudaMallocHost((void**)&inputImageBuffer, image_size * sizeof(float4));
@@ -825,7 +827,7 @@ namespace osc {
                 {
                     for (std::int32_t J = 0; J < launchParams.frame.size.x; ++J)
                     {
-                        std::size_t OldPos = (launchParams.frame.size.y - I - 1) * (launchParams.frame.size.x /* 3*/) + /*3 */ J;
+                        std::size_t OldPos = (launchParams.frame.size.y - I - 1) * (launchParams.frame.size.x) + J;
                         std::size_t NewPos = I * (launchParams.frame.size.x * 4) + 4 * J;
                         PngBuffer[NewPos + 0] = (uint8_t)inputImageBuffer[OldPos].x * 255.9f; //R is offset 0
                         PngBuffer[NewPos + 1] = (uint8_t)inputImageBuffer[OldPos].y * 255.9f; //B is offset 1
@@ -857,7 +859,7 @@ namespace osc {
             }
             
             cudaFreeHost(inputImageBuffer);
-        }
+        }*/
 
         //--------------------------------------------------------------
 

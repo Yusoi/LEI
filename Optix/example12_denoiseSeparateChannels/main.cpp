@@ -22,8 +22,10 @@
 
 #include <math.h>
 #include <cstdlib>
+#include <fstream>
 
 bool capture = false;
+std::ofstream outfile;
 
 /*! \namespace osc - Optix Siggraph Course */
 namespace osc {
@@ -39,6 +41,7 @@ namespace osc {
         sample(model,light)
     {
       sample.setCamera(camera);
+      outfile.open("camera_pos.txt", std::ios_base::app);
     }
     
     virtual void render() override
@@ -58,6 +61,8 @@ namespace osc {
         sample.setCamera(Camera{ from,
                                  at,
                                  cameraFrame.get_up() });
+
+        outfile << from.x << ";" << from.y << ";" << from.z << ";" << at.x << ";" << at.y << ";" << at.z << std::endl;
         std::cout << "From\| X:" << from.x << " Y:" << from.y << " Z:" << from.z << std::endl;
         std::cout << "At\| X:" << at.x << " Y:" << at.y << " Z:" << at.z << std::endl;
 
@@ -72,7 +77,7 @@ namespace osc {
         cameraFrame.modified = false;
       }
       sample.render();
-      if (sample.nr > 999) {
+      if (sample.nr > 9999) {
           capture = false;
       }
     }
