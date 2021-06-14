@@ -86,7 +86,6 @@ set(optix_LIBRARY "")
 # rendering
 add_subdirectory(example11_denoiseColorOnly)
 add_subdirectory(example12_denoiseSeparateChannels)
-add_subdirectory(intel_denoiser)
 add_subdirectory(intel_image_denoiser)
 
 

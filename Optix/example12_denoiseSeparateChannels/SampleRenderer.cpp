@@ -603,15 +603,7 @@ namespace osc {
     sbt.hitgroupRecordCount         = (int)hitgroupRecords.size();
   }
 
-  void abort_(const char* s, ...)
-  {
-      va_list args;
-      va_start(args, s);
-      vfprintf(stderr, s, args);
-      fprintf(stderr, "\n");
-      va_end(args);
-      abort();
-  }
+
 
   /*! render one frame */
   void SampleRenderer::render()
@@ -620,7 +612,7 @@ namespace osc {
     // already done:
     if (launchParams.frame.size.x == 0) return;
 
-    if (captureStarted) {
+     if (captureStarted) {
         launchParams.frame.frameID = 0;
         captureStarted = false;
     }
@@ -641,10 +633,13 @@ namespace osc {
                             1
                             ));
 
+    denoiserIntensity.resize(sizeof(float));
+
     OptixDenoiserParams denoiserParams;
     denoiserParams.denoiseAlpha = 1;
 #if OPTIX_VERSION >= 70300
-    denoiserIntensity.alloc(sizeof(float));
+    if (denoiserIntensity.sizeInBytes != sizeof(float))
+        denoiserIntensity.alloc(sizeof(float));
 #endif
     denoiserParams.hdrIntensity = denoiserIntensity.d_pointer();
     denoiserParams.blendFactor  = 1.f/(launchParams.frame.frameID);
@@ -722,47 +717,47 @@ namespace osc {
                    (CUdeviceptr)denoiserScratch.d_pointer(),
                    denoiserScratch.size()));
       
-#if OPTIX_VERSION >= 70300
-    OptixDenoiserGuideLayer denoiserGuideLayer = {};
-    denoiserGuideLayer.albedo = inputLayer[1];
-    denoiserGuideLayer.normal = inputLayer[2];
+    #if OPTIX_VERSION >= 70300
+      OptixDenoiserGuideLayer denoiserGuideLayer = {};
+      denoiserGuideLayer.albedo = inputLayer[1];
+      denoiserGuideLayer.normal = inputLayer[2];
 
-    OptixDenoiserLayer denoiserLayer = {};
-    denoiserLayer.input = inputLayer[0];
-    denoiserLayer.output = outputLayer;
+      OptixDenoiserLayer denoiserLayer = {};
+      denoiserLayer.input = inputLayer[0];
+      denoiserLayer.output = outputLayer;
 
-      OPTIX_CHECK(optixDenoiserInvoke(denoiser,
-                                      /*stream*/0,
-                                      &denoiserParams,
-                                      denoiserState.d_pointer(),
-                                      denoiserState.size(),
-                                      &denoiserGuideLayer,
-                                      &denoiserLayer,1,
-                                      /*inputOffsetX*/0,
-                                      /*inputOffsetY*/0,
-                                      denoiserScratch.d_pointer(),
-                                      denoiserScratch.size()));
-#else
-      OPTIX_CHECK(optixDenoiserInvoke(denoiser,
-                                      /*stream*/0,
-                                      &denoiserParams,
-                                      denoiserState.d_pointer(),
-                                      denoiserState.size(),
-                                      &inputLayer[0],2,
-                                      /*inputOffsetX*/0,
-                                      /*inputOffsetY*/0,
-                                      &outputLayer,
-                                      denoiserScratch.d_pointer(),
-                                      denoiserScratch.size()));
-#endif
+        OPTIX_CHECK(optixDenoiserInvoke(denoiser,
+                                        /*stream*/0,
+                                        &denoiserParams,
+                                        denoiserState.d_pointer(),
+                                        denoiserState.size(),
+                                        &denoiserGuideLayer,
+                                        &denoiserLayer,1,
+                                        /*inputOffsetX*/0,
+                                        /*inputOffsetY*/0,
+                                        denoiserScratch.d_pointer(),
+                                        denoiserScratch.size()));
+    #else
+        OPTIX_CHECK(optixDenoiserInvoke(denoiser,
+                                        /*stream*/0,
+                                        &denoiserParams,
+                                        denoiserState.d_pointer(),
+                                        denoiserState.size(),
+                                        &inputLayer[0],2,
+                                        /*inputOffsetX*/0,
+                                        /*inputOffsetY*/0,
+                                        &outputLayer,
+                                        denoiserScratch.d_pointer(),
+                                        denoiserScratch.size()));
+    #endif
     } else {
       cudaMemcpy((void*)outputLayer.data,(void*)inputLayer[0].data,
                  outputLayer.width*outputLayer.height*sizeof(float4),
                  cudaMemcpyDeviceToDevice);
     }
     computeFinalPixelColors();
-    
-    if (capture && (launchParams.frame.frameID == 2000 || launchParams.frame.frameID == 1)) {
+
+        if (capture && (launchParams.frame.frameID == 2000 || launchParams.frame.frameID == 1)) {
         uint32_t* imageBuffer;
         size_t image_size = launchParams.frame.size.x * launchParams.frame.size.y;
         cudaMallocHost((void**) &imageBuffer, image_size * sizeof(uint32_t));
@@ -800,8 +795,7 @@ namespace osc {
         }
 
         lodepng::save_file(OutputBuffer, ("generated_dataset\/"+filename).c_str());
-
-        /*
+        
         if (launchParams.frame.frameID == 1) {
             float4* inputImageBuffer;
             cudaMallocHost((void**)&inputImageBuffer, image_size * sizeof(float4));
@@ -859,7 +853,7 @@ namespace osc {
             }
             
             cudaFreeHost(inputImageBuffer);
-        }*/
+        }
 
         //--------------------------------------------------------------
 
@@ -873,7 +867,7 @@ namespace osc {
             nr++;
         }
     }
-
+    
     // sync - make sure the frame is rendered before we download and
     // display (obviously, for a high-performance application you
     // want to use streams and double-buffering, but for this simple
@@ -912,13 +906,12 @@ namespace osc {
     // ------------------------------------------------------------------
     // create the denoiser:
     OptixDenoiserOptions denoiserOptions = {};
-
 #if OPTIX_VERSION >= 70300
     OPTIX_CHECK(optixDenoiserCreate(optixContext,OPTIX_DENOISER_MODEL_KIND_LDR,&denoiserOptions,&denoiser));
 #else
+    denoiserOptions.inputKind = OPTIX_DENOISER_INPUT_RGB_ALBEDO;
 #if OPTIX_VERSION < 70100
     // these only exist in 7.0, not 7.1
-    denoiserOptions.inputKind   = OPTIX_DENOISER_INPUT_RGB;
     denoiserOptions.pixelFormat = OPTIX_PIXEL_FORMAT_FLOAT4;
 #endif
 
