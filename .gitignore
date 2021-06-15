@@ -33,8 +33,6 @@
 
 Optix/build/*
 build/*
-Optix/common/3rdParty/oidn/*
-Optix/common/3rdParty/tbb/*
 
 Pix2Pix/generated_dataset/*
 Pix2Pix/results/*
