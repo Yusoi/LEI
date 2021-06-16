@@ -30,6 +30,7 @@
 *.app
 
 Optix/build/*
+Optix/.vs
 build/*
 
 Pix2Pix/generated_dataset/*
