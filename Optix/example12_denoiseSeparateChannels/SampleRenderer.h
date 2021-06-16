@@ -64,7 +64,7 @@ namespace osc {
     bool capture = false;
     bool captureStarted = false;
     bool cam_pos = false;
-    long nr = 7467;
+    long nr = 0;
   protected:
 
 

@@ -757,7 +757,7 @@ namespace osc {
     }
     computeFinalPixelColors();
 
-        if (capture && (launchParams.frame.frameID == 2000 || launchParams.frame.frameID == 1)) {
+    if (capture && (launchParams.frame.frameID == 1000 || launchParams.frame.frameID == 1)) {
         uint32_t* imageBuffer;
         size_t image_size = launchParams.frame.size.x * launchParams.frame.size.y;
         cudaMallocHost((void**) &imageBuffer, image_size * sizeof(uint32_t));
@@ -790,7 +790,7 @@ namespace osc {
         std::string filename = "";
         if (launchParams.frame.frameID == 1) {
             filename = std::to_string(nr) + "_noisy.png";
-        } else if (launchParams.frame.frameID == 2000) {
+        } else if (launchParams.frame.frameID == 1000) {
             filename = std::to_string(nr) + "_accumulated.png";
         }
 
@@ -800,8 +800,8 @@ namespace osc {
             float4* inputImageBuffer;
             cudaMallocHost((void**)&inputImageBuffer, image_size * sizeof(float4));
 
-            for (int i = 0; i < 3; i++) {
-                switch (i) {
+            for (int f = 0; f < 3; f++) {
+                switch (f) {
                     case 0:
                         fbColor.download(inputImageBuffer, image_size);
                         break;
@@ -823,10 +823,20 @@ namespace osc {
                     {
                         std::size_t OldPos = (launchParams.frame.size.y - I - 1) * (launchParams.frame.size.x) + J;
                         std::size_t NewPos = I * (launchParams.frame.size.x * 4) + 4 * J;
-                        PngBuffer[NewPos + 0] = (uint8_t)inputImageBuffer[OldPos].x * 255.9f; //R is offset 0
-                        PngBuffer[NewPos + 1] = (uint8_t)inputImageBuffer[OldPos].y * 255.9f; //B is offset 1
-                        PngBuffer[NewPos + 2] = (uint8_t)inputImageBuffer[OldPos].z * 255.9f; //G is offset 2
-                        PngBuffer[NewPos + 3] = (uint8_t)inputImageBuffer[OldPos].w * 255.9f; //A is offset 3
+                        if (f == 0 || f == 1) {
+                            PngBuffer[NewPos + 0] = (uint8_t)(inputImageBuffer[OldPos].x * 255); //R is offset 0
+                            PngBuffer[NewPos + 1] = (uint8_t)(inputImageBuffer[OldPos].y * 255); //B is offset 1
+                            PngBuffer[NewPos + 2] = (uint8_t)(inputImageBuffer[OldPos].z * 255); //G is offset 2
+                            PngBuffer[NewPos + 3] = (uint8_t)(inputImageBuffer[OldPos].w * 255); //A is offset 3
+                        }
+                        else {
+                            PngBuffer[NewPos + 0] = (uint8_t)((inputImageBuffer[OldPos].x + 1) / 2 * 255); //R is offset 0
+                            PngBuffer[NewPos + 1] = (uint8_t)((inputImageBuffer[OldPos].y + 1) / 2 * 255); //B is offset 1
+                            PngBuffer[NewPos + 2] = (uint8_t)((inputImageBuffer[OldPos].z + 1) / 2 * 255); //G is offset 2
+                            PngBuffer[NewPos + 3] = (uint8_t)((inputImageBuffer[OldPos].w + 1) / 2 * 255); //A is offset 3
+
+                        }
+                        
                     }
                 }
 
@@ -834,7 +844,7 @@ namespace osc {
                 lodepng::encode(OutputBuffer, PngBuffer, launchParams.frame.size.x, launchParams.frame.size.y);
 
                 std::string filename = "";
-                switch (i) {
+                switch (f) {
                     case 0:
                         filename = std::to_string(nr) + "_color.png";
                         break;
@@ -857,11 +867,9 @@ namespace osc {
 
         //--------------------------------------------------------------
 
-        
-                   
         if (launchParams.frame.frameID == 1) {
             std::cout << "Noisy Image Saved" << std::endl;
-        } else if (launchParams.frame.frameID == 2000) {
+        } else if (launchParams.frame.frameID == 1000) {
             std::cout << "Accumulated Image Saved" << std::endl << "Ended Capture" << std::endl;
             capture = false;
             nr++;
