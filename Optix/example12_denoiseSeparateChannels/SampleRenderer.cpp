@@ -834,7 +834,6 @@ namespace osc {
                             PngBuffer[NewPos + 1] = (uint8_t)((inputImageBuffer[OldPos].y + 1) / 2 * 255); //B is offset 1
                             PngBuffer[NewPos + 2] = (uint8_t)((inputImageBuffer[OldPos].z + 1) / 2 * 255); //G is offset 2
                             PngBuffer[NewPos + 3] = (uint8_t)((inputImageBuffer[OldPos].w + 1) / 2 * 255); //A is offset 3
-
                         }
                         
                     }

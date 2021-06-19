@@ -4,13 +4,16 @@ import cv2
 import numpy as np
 import glob
 
-#png_to_exr.py "C:\\Users\\Bernardo Silva\\Desktop\\LEI\\Optix\\build\\Release\\generated_dataset\\" "C:\\Users\\Bernardo Silva\\Desktop\\LEI\\aux_scripts\\exr\\" "noisy"
+#python png_to_exr.py "C:\\Users\\Bernardo Silva\\Desktop\\LEI\\Optix\\build\\Release\\generated_dataset\\" "C:\\Users\\Bernardo Silva\\Desktop\\LEI\\aux_scripts\\exr\\" "noisy"
 #DATASET_PATH = "C:\\Users\\Bernardo Silva\\Desktop\\LEI\\Optix\\build\\Release\\generated_dataset\\"
 #OUTPUT_PATH = "C:\\Users\\Bernardo Silva\\Desktop\\LEI\\aux_scripts\\exr\\"
 
-def load_files(img):
+def load_files(img, EXTENSION):
     image = cv2.imread(img,cv2.IMREAD_UNCHANGED)
-    image = image/255.0
+    if EXTENSION == "normal":
+        image = (image/125.5)-1
+    else:
+        image = image/255.0
     image = image.astype("float32")
     img = img.split("\\")[-1]
     img = img.split("_")[0]
@@ -31,6 +34,5 @@ if __name__ == "__main__":
     EXTENSION = args.ext
 
     file_list = glob.glob(INPUT_PATH+"*_"+EXTENSION+".png")
-    print(file_list)
     for file in file_list:
-        load_files(file)
+        load_files(file, EXTENSION)

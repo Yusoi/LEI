@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 import glob
 
-#png_to_exr.py "C:\\Users\\Bernardo Silva\\Desktop\\LEI\\Optix\\build\\Release\\generated_dataset\\" "C:\\Users\\Bernardo Silva\\Desktop\\LEI\\aux_scripts\\exr\\" "noisy"
+#python exr_to_png.py "C:\\Users\\Bernardo Silva\\Desktop\\Dataset\\dataset_4_nvidia_results_exr\\" "C:\\Users\\Bernardo Silva\\Desktop\\Dataset\\dataset_4_nvidia_results\\" "prediction"
 #DATASET_PATH = "C:\\Users\\Bernardo Silva\\Desktop\\LEI\\Optix\\build\\Release\\generated_dataset\\"
 #OUTPUT_PATH = "C:\\Users\\Bernardo Silva\\Desktop\\LEI\\aux_scripts\\exr\\"
 

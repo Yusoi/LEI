@@ -2,6 +2,8 @@ import os
 import glob
 import argparse
 
+#python run_denoiser.py "C:\\Users\\Bernardo Silva\\Desktop\\Dataset\\dataset_4_exr\\" "C:\\Users\\Bernardo Silva\\Desktop\\Dataset\\dataset_4_nvidia_results_exr\\"
+
 if __name__ == "__main__":
     command = "\"C:\\ProgramData\\NVIDIA Corporation\\OptiX SDK 7.3.0\\SDK\\build\\bin\\Release\\optixDenoiser.exe\""
 
@@ -13,11 +15,18 @@ if __name__ == "__main__":
     INPUT_PATH = args.i
     OUTPUT_PATH = args.o
 
-    file_list = glob.glob(INPUT_PATH+"*_noisy.exr")
-    for file in file_list:
+    noisy_list = sorted(glob.glob(INPUT_PATH+"*_color.exr"))
+    albedo_list = sorted(glob.glob(INPUT_PATH+"*_albedo.exr"))
+    normal_list = sorted(glob.glob(INPUT_PATH+"*_normal.exr"))
+    for file in noisy_list:
         nr = file.split("\\")[-1]
         nr = nr.split("_")[0]
-        com = command+" -o \""+OUTPUT_PATH+nr+"_prediction.exr\" " + "\""+file+"\""
+        com = command+" -o \""+OUTPUT_PATH+nr+"_prediction.exr\" "
+        if albedo_list:
+            com = com + "-a \""+INPUT_PATH+nr+"_albedo.exr\" " 
+        if normal_list:
+            com = com + "-n \""+INPUT_PATH+nr+"_normal.exr\" " 
+        com = com + "\""+file+"\""
         print(com)
         stream = os.popen(com)
         output = stream.read()
