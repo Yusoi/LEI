@@ -39,3 +39,6 @@ Pix2Pix/test_output/*
 Pix2Pix/training_checkpoints/*
 Pix2Pix/logs/*
 Pix2Pix/fit/*
+Pix2Pix/test_results/*
+Pix2Pix/dataset*
+Pix2Pix/.ipynb_checkpoints
