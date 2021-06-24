@@ -31,6 +31,7 @@
 
 Optix/build/*
 Optix/.vs
+Optix/salle_de_bain/*
 build/*
 
 Pix2Pix/generated_dataset/*
