@@ -612,6 +612,11 @@ namespace osc {
     // already done:
     if (launchParams.frame.size.x == 0) return;
 
+    if (cam_pos) {
+        std::cout << "From: " << lastSetCamera.from.x << " " << lastSetCamera.from.y << " " << lastSetCamera.from.z << std::endl;
+        std::cout << "At: " << lastSetCamera.at.x << " " << lastSetCamera.at.y << " " << lastSetCamera.at.z << std::endl;
+    }
+
      if (captureStarted) {
         launchParams.frame.frameID = 0;
         captureStarted = false;
@@ -702,7 +707,7 @@ namespace osc {
     /// Pixel format.
     outputLayer.format = OPTIX_PIXEL_FORMAT_FLOAT4;
 
-    if (capture) {
+    if (capture && !denoiserOn) {
         cudaMemcpy((void*)outputLayer.data, (void*)inputLayer[0].data,
             outputLayer.width * outputLayer.height * sizeof(float4),
             cudaMemcpyDeviceToDevice);

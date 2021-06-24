@@ -25,6 +25,7 @@
 #include <fstream>
 
 bool capture = false;
+bool single_capture = false;
 std::ofstream outfile;
 
 /*! \namespace osc - Optix Siggraph Course */
@@ -46,37 +47,45 @@ namespace osc {
     
     virtual void render() override
     {
-      if (capture && !sample.capture) {
-        float from_x = rand() % (1250 - (-1250) + 1) - 1250;
-        float from_y = rand() % (800 - 30 + 1) + 30;
-        float from_z = rand() % (575 - (-575) + 1) - 575;
-        gdt::vec3f from = gdt::vec3f(from_x, from_y, from_z);
+        if (capture && !sample.capture) {
+            float from_x = rand() % (1250 - (-1250) + 1) - 1250;
+            float from_y = rand() % (800 - 30 + 1) + 30;
+            float from_z = rand() % (575 - (-575) + 1) - 575;
+            gdt::vec3f from = gdt::vec3f(from_x, from_y, from_z);
 
-        float radius = 1;
-        float angle = ((float)(rand() % 100000) / (float)100000) * 2 * M_PI;
-        float at_y = ((float)(rand() % 200000) / (float)100000) - 1;
-        
+            float radius = 1;
+            float angle = ((float)(rand() % 100000) / (float)100000) * 2 * M_PI;
+            float at_y = ((float)(rand() % 200000) / (float)100000) - 1;
 
-        gdt::vec3f at = gdt::vec3f(cos(angle) + from_x, at_y + from_y, sin(angle) + from_z);
-        sample.setCamera(Camera{ from,
-                                 at,
-                                 cameraFrame.get_up() });
 
-        outfile << from.x << ";" << from.y << ";" << from.z << ";" << at.x << ";" << at.y << ";" << at.z << std::endl;
-        std::cout << "From\| X:" << from.x << " Y:" << from.y << " Z:" << from.z << std::endl;
-        std::cout << "At\| X:" << at.x << " Y:" << at.y << " Z:" << at.z << std::endl;
+            gdt::vec3f at = gdt::vec3f(cos(angle) + from_x, at_y + from_y, sin(angle) + from_z);
+            sample.setCamera(Camera{ from,
+                                     at,
+                                     cameraFrame.get_up() });
 
-        sample.capture = true;
-        sample.captureStarted = true;
-        sample.denoiserOn = false;
+            outfile << from.x << ";" << from.y << ";" << from.z << ";" << at.x << ";" << at.y << ";" << at.z << std::endl;
+            std::cout << "From\| X:" << from.x << " Y:" << from.y << " Z:" << from.z << std::endl;
+            std::cout << "At\| X:" << at.x << " Y:" << at.y << " Z:" << at.z << std::endl;
 
-      } else if (cameraFrame.modified) {
+            sample.capture = true;
+            sample.captureStarted = true;
+            sample.denoiserOn = false;
+
+        }
+        else if (single_capture && !sample.capture) {
+            sample.capture = true;
+            sample.captureStarted = true;
+            sample.denoiserOn = true;
+        } else if (cameraFrame.modified) {
         sample.setCamera(Camera{ cameraFrame.get_from(),
                                  cameraFrame.get_at(),
                                  cameraFrame.get_up() });
         cameraFrame.modified = false;
       }
       sample.render();
+      if (single_capture && !sample.capture) {
+          single_capture = false;
+      }
       if (sample.nr > 9999) {
           capture = false;
       }
@@ -163,6 +172,12 @@ namespace osc {
           capture = true;
           std::cout << "capturing image" << std::endl;
       }
+      if (key == 'R' || key == 'r') {
+          sample.cam_pos = !sample.cam_pos;
+      }
+      if (key == 'C' || key == 'c') {
+          single_capture = true;
+      }
     }
     
 
@@ -184,20 +199,20 @@ namespace osc {
       // on windows, visual studio creates _two_ levels of build dir
       // (x86/Release)
       //"../../../Optix/models/sponza.obj"
-      "../../../Optix/models/sponsa.obj"
-#else
+      "../../../Optix/salle_de_bain/salle_de_bain.obj"
+#elif defined __linux__ 
       // on linux, common practice is to have ONE level of build dir
       // (say, <project>/build/)...
       "../Optix/models/sponza.obj"
 #endif
                              );
-      Camera camera = { /*from*/vec3f(-1293.07f, 154.681f, -0.7304f),
-                        /* at */model->bounds.center()-vec3f(0,400,0),
+      Camera camera = { /*from*//*vec3f(-1293.07f, 154.681f, -0.7304f)*/vec3f(0.f,1.f,0.f),
+                        /* at */model->bounds.center()/*-vec3f(0,400,0)*/,
                         /* up */vec3f(0.f,1.f,0.f) };
 
       // some simple, hard-coded light ... obviously, only works for sponza
       const float light_size = 200.f;
-      QuadLight light = { /* origin */ vec3f(-1000-light_size,800,-light_size),
+      QuadLight light = { /* origin */ vec3f(78.9f,51.0f,59.8f),/*vec3f(-1000-light_size,800,-light_size)/*,
                           /* edge 1 */ vec3f(2.f*light_size,0,0),
                           /* edge 2 */ vec3f(0,0,2.f*light_size),
                           /* power */  vec3f(3000000.f) };

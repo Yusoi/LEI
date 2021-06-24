@@ -15,9 +15,10 @@ if __name__ == "__main__":
     INPUT_PATH = args.i
     OUTPUT_PATH = args.o
 
-    noisy_list = sorted(glob.glob(INPUT_PATH+"*_color.exr"))
-    albedo_list = sorted(glob.glob(INPUT_PATH+"*_albedo.exr"))
-    normal_list = sorted(glob.glob(INPUT_PATH+"*_normal.exr"))
+    noisy_list = sorted(glob.glob(INPUT_PATH+"*_noisy.exr"))
+    albedo_list = []#sorted(glob.glob(INPUT_PATH+"*_albedo.exr"))
+    normal_list = []#sorted(glob.glob(INPUT_PATH+"*_normal.exr"))
+
     for file in noisy_list:
         nr = file.split("\\")[-1]
         nr = nr.split("_")[0]
